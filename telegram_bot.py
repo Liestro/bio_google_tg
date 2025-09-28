@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import asyncio
 from typing import Final
 
@@ -69,6 +70,35 @@ def _escape_markdown_v2(text: str) -> str:
         else:
             out.append(ch)
     return "".join(out)
+
+
+_CODE_SNIPPET_RE = re.compile(r"(```.*?```|`[^`]*`)", flags=re.DOTALL)
+
+
+def _normalize_markdown_for_telegram(text: str) -> str:
+    """Convert common Markdown constructs into Telegram-friendly Markdown (v1)."""
+
+    def _normalize_segment(segment: str) -> str:
+        # Normalize list markers that use '*' to '-' to avoid conflicts with bold
+        segment = re.sub(r"(?m)^(\s*)\* +", r"\1- ", segment)
+        # Convert double emphasis to single-star bold
+        segment = re.sub(r"\*\*(.+?)\*\*", r"*\1*", segment)
+        # Convert double underscores to single underscore emphasis
+        segment = re.sub(r"__(.+?)__", r"_\1_", segment)
+        return segment
+
+    parts: list[str] = []
+    last_end = 0
+    for match in _CODE_SNIPPET_RE.finditer(text):
+        prefix = text[last_end:match.start()]
+        if prefix:
+            parts.append(_normalize_segment(prefix))
+        parts.append(match.group(0))
+        last_end = match.end()
+    remainder = text[last_end:]
+    if remainder:
+        parts.append(_normalize_segment(remainder))
+    return "".join(parts)
 
 
 def _get_bot_token() -> str:
@@ -153,9 +183,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 sources_block_lines.append(f"- {safe_title}")
             answer = answer + "\n".join(sources_block_lines)
 
+        normalized_answer = _normalize_markdown_for_telegram(answer)
+
         # Telegram limits message length; split if too long
         # Send original Markdown (v1) to preserve formatting from API
-        for chunk in _split_message(answer, limit=3900):
+        for chunk in _split_message(normalized_answer, limit=3900):
             try:
                 await update.message.reply_text(
                     chunk,
@@ -166,7 +198,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await update.message.reply_text(chunk)
 
         # Save assistant reply to history (truncate long chats)
-        history.append({"role": "assistant", "content": answer[:4000]})
+        history.append({"role": "assistant", "content": normalized_answer[:4000]})
         # Keep last N turns
         max_messages = 20
         if len(history) > max_messages:
