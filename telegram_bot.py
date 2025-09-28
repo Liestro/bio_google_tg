@@ -159,24 +159,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if not answer:
             answer = "Sorry, I couldn't find an answer. Please try rephrasing your question."
 
-        # Print raw answer to console for debugging/verification
-        try:
-            print("\n--- RAW ANSWER START ---\n" + str(answer) + "\n--- RAW ANSWER END ---\n")
-        except Exception:
-            pass
-
         # Append sources if available (with safe Markdown)
         titles = extract_source_titles(resp, max_titles=5)
         if titles:
-            # Print sources to console for verification
-            try:
-                print("--- SOURCES START ---")
-                for t in titles:
-                    print(t)
-                print("--- SOURCES END ---\n")
-            except Exception:
-                pass
-
             sources_block_lines = ["", "", "*Sources:*"]
             for title in titles:
                 safe_title = _escape_markdown_v1(title)
